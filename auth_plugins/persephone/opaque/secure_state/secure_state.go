@@ -92,7 +92,6 @@ func CreateOpaqueStateEnvelope(step string, akeStateB64 string) (op.OpaqueServer
 		EnvelopeKeyBlock: op.EnvelopeKeyBlock{
 			Version:                                KeyBlockVersion,
 			EncryptedEphemeralSymmetricEnvelopeKey: base64.RawURLEncoding.EncodeToString(encKey),
-			KeyEncryptionAlgorithm:                 KeyEncryptionAlgorithm,
 			SignatureKeyID:                         SignatureAlgorithm,
 			EphemeralSymmetricEnvelopeKeySignature: base64.RawURLEncoding.EncodeToString(sigKey[:]),
 		},

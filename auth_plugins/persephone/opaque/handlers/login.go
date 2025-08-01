@@ -4,14 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+
 	"github.com/drlzh/mng-app-user-auth-prot/auth_plugins/persephone/auth_ticket"
 	at "github.com/drlzh/mng-app-user-auth-prot/auth_plugins/persephone/auth_ticket/structs"
 	ss "github.com/drlzh/mng-app-user-auth-prot/auth_plugins/persephone/opaque/secure_state"
 	op "github.com/drlzh/mng-app-user-auth-prot/auth_plugins/persephone/opaque/structs"
-	"github.com/drlzh/mng-app-user-auth-prot/crypto/auth/ed448/ed448_api"
 	"github.com/drlzh/mng-app-user-auth-prot/crypto/auth/opaque/opaque_api"
 	uagc "github.com/drlzh/mng-app-user-auth-prot/user_auth_global_config"
-	"time"
 )
 
 func HandleLogin(
@@ -60,19 +59,6 @@ func HandleLogin(
 		}
 		return reply, "200", "Login successful", ""
 
-	case op.OpaqueCmdLoginWithStub:
-		sessionAuth, err := handleOpaqueLoginWithStub(req)
-		if err != nil {
-			return nil, "400", "LoginWithStub failed", err.Error()
-		}
-
-		reply := op.OpaqueServerReply{
-			CommandType:          op.OpaqueCmdLoginWithStub,
-			OpaqueServerResponse: sessionAuth,
-			ServerPayload:        "",
-		}
-		return reply, "200", "Login finalized", ""
-
 	default:
 		return nil, "400", "Unsupported login command", req.CommandType
 	}
@@ -82,17 +68,13 @@ func handleOpaqueLoginStepTwo(
 	svc *opaque_api.DefaultOpaqueService,
 	msg op.OpaqueClientReply,
 ) (string, error) {
-	// Parse client payload to extract username
 	var clientPayload op.ClientLoginPayload
 	if err := json.Unmarshal([]byte(msg.ClientPayload), &clientPayload); err != nil {
 		return "", fmt.Errorf("invalid login payload: %w", err)
 	}
-	user := clientPayload.User
+	coreUser := clientPayload.User
 
-	// Envelope is embedded in msg
 	env := msg.OpaqueServerStateEnvelope
-
-	// Decrypt and verify the envelope
 	state, err := ss.VerifyAndDecryptEnvelope(env)
 	if err != nil {
 		return "", fmt.Errorf("envelope decryption failed: %w", err)
@@ -103,141 +85,64 @@ func handleOpaqueLoginStepTwo(
 		return "", fmt.Errorf("opaque login step 2 failed: %w", err)
 	}
 
-	// Decode session key
 	sessionKey, err := base64.RawURLEncoding.DecodeString(sessionKeyB64)
 	if err != nil {
 		return "", fmt.Errorf("session key decode failed: %w", err)
 	}
 
-	// Retrieve AT
-	ticket, err := auth_ticket.CreateAuthTicket(
-		user,
-		at.AuthTicketPurposeLogin,
-		"",
-		false,
-		nil,
-	)
+	bindings, err := svc.Store().GetUserGroupsForUser(coreUser)
 	if err != nil {
-		return "", fmt.Errorf("failed to issue token: %w", err)
+		return "", fmt.Errorf("failed to retrieve user group bindings: %w", err)
 	}
 
-	ticketBytes, err := json.Marshal(ticket)
-	if err != nil {
-		return "", fmt.Errorf("marshal auth ticket: %w", err)
-	}
-	ticketStr := string(ticketBytes)
+	var entries []op.LoginPerUserGroupEntry
+	for _, b := range bindings {
+		uu := uagc.UniqueUser{
+			TenantID:    coreUser.TenantID,
+			UserID:      coreUser.UserID,
+			UserGroupID: b.UserGroupID,
+			SubID:       "", // not used for now
+		}
 
-	// Encrypt token with session key
-	encToken, err := ss.EncryptTokenWithSessionKey(sessionKey, ticketStr)
-	if err != nil {
-		return "", fmt.Errorf("token encryption failed: %w", err)
+		ticket, err := auth_ticket.CreateAuthTicket(
+			uu,
+			at.AuthTicketPurposeLogin,
+			"",
+			false,
+			nil,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to issue token: %w", err)
+		}
+
+		ticketBytes, err := json.Marshal(ticket)
+		if err != nil {
+			return "", fmt.Errorf("marshal auth ticket: %w", err)
+		}
+
+		encToken, err := ss.EncryptTokenWithSessionKey(sessionKey, string(ticketBytes))
+		if err != nil {
+			return "", fmt.Errorf("token encryption failed: %w", err)
+		}
+
+		entries = append(entries, op.LoginPerUserGroupEntry{
+			UserGroupID:     uu.UserGroupID,
+			UserGroupName:   uagc.FriendlyNameForGroupID(uu.UserGroupID),
+			EncryptedTicket: encToken,
+		})
 	}
 
-	// Marshal and encode final response
 	resp := op.LoginSuccessResponse{
+		Version:        op.LoginSuccessResponseVersion,
 		Success:        true,
-		EncryptedToken: encToken,
+		UserGroupCount: len(entries),
+		UserGroups:     entries,
 	}
+
 	jsonBytes, err := json.Marshal(resp)
 	if err != nil {
 		return "", fmt.Errorf("marshal login success response failed: %w", err)
 	}
 
 	return base64.RawURLEncoding.EncodeToString(jsonBytes), nil
-}
-
-func handleOpaqueLoginWithStub(msg op.OpaqueClientReply) (string, error) {
-	// Extract client login stub
-	var stub op.ClientLoginStub
-	if err := json.Unmarshal([]byte(msg.ClientPayload), &stub); err != nil {
-		return "", fmt.Errorf("invalid login stub payload: %w", err)
-	}
-	assertion := stub.PartialLoginAssertion
-
-	// Verify signature on PartialLoginAssertion
-	if err := verifyPartialLoginAssertion(&assertion); err != nil {
-		return "", fmt.Errorf("invalid partial login assertion: %w", err)
-	}
-
-	// Rehydrate UniqueUser
-	user := uagc.UniqueUser{
-		TenantID:    assertion.PartialUser.TenantID,
-		SubID:       assertion.PartialUser.SubID,
-		UserID:      assertion.PartialUser.UserID,
-		UserGroupID: stub.DesiredUserGroupID,
-	}
-
-	// Create signed AuthTicket
-	authTicket, err := auth_ticket.CreateAuthTicket(
-		user,
-		at.AuthTicketPurposeLogin,
-		"",
-		false,
-		nil,
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to create auth ticket: %w", err)
-	}
-
-	// Encrypt with sessionKey from KE2 (in envelope)
-	env := msg.OpaqueServerStateEnvelope
-	state, err := ss.VerifyAndDecryptEnvelope(env)
-	if err != nil {
-		return "", fmt.Errorf("failed to decrypt opaque state: %w", err)
-	}
-
-	sessionKey, err := base64.RawURLEncoding.DecodeString(state.AkeServerState)
-	if err != nil {
-		return "", fmt.Errorf("invalid base64 AKE session key: %w", err)
-	}
-
-	serialized, err := json.Marshal(authTicket)
-	if err != nil {
-		return "", fmt.Errorf("marshal ticket failed: %w", err)
-	}
-
-	encToken, err := ss.EncryptTokenWithSessionKey(sessionKey, serialized)
-	if err != nil {
-		return "", fmt.Errorf("token encryption failed: %w", err)
-	}
-
-	resp := op.LoginSuccessResponse{
-		Version:                   "v1",
-		Success:                   true,
-		RequireUserGroupSelection: false,
-		EncryptedToken:            encToken,
-	}
-	jsonBytes, err := json.Marshal(resp)
-	if err != nil {
-		return "", fmt.Errorf("marshal login success response failed: %w", err)
-	}
-
-	return base64.RawURLEncoding.EncodeToString(jsonBytes), nil
-}
-
-func verifyPartialLoginAssertion(assertion *op.PartialLoginAssertion) error {
-	unsigned := *assertion
-	unsigned.Signature = ""
-
-	data, err := json.Marshal(unsigned)
-	if err != nil {
-		return fmt.Errorf("marshal unsigned: %w", err)
-	}
-
-	sig, err := base64.RawURLEncoding.DecodeString(assertion.Signature)
-	if err != nil {
-		return fmt.Errorf("signature decode: %w", err)
-	}
-
-	if !ed448_api.Verify(sig, data, uagc.Ed448AuthTicketPublicKey()) {
-		return fmt.Errorf("signature invalid")
-	}
-
-	// Optional: check freshness
-	now := time.Now().Unix()
-	if now-assertion.IssuedAtUnixTimestamp > 300 {
-		return fmt.Errorf("assertion too old")
-	}
-
-	return nil
 }

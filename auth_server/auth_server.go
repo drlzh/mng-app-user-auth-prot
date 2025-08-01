@@ -10,14 +10,12 @@ import (
 )
 
 const (
-	defaultPort   = ":8080"
-	apiPrefix     = "/api/"
-	authPrefix    = "/auth/"
-	versionPrefix = "/v1" // You may support more later
+	defaultPort = ":8080"
+	fullPrefix  = "/api/v1/auth/"
 )
 
 func StartAuthServer() {
-	http.HandleFunc(authPrefix, AuthEndpoint)
+	http.HandleFunc(fullPrefix, AuthEndpoint)
 
 	log.Printf("🚀 Auth server running on %s", defaultPort)
 	if err := http.ListenAndServe(defaultPort, nil); err != nil {
@@ -65,10 +63,8 @@ func AuthEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func normalizePath(p string) string {
-	// Strip optional version prefix and base path
-	p = strings.TrimPrefix(p, versionPrefix)
-	p = strings.TrimPrefix(p, apiPrefix)
-	p = strings.TrimPrefix(p, authPrefix)
+	// Strip known prefix `/api/v1/auth/`
+	p = strings.TrimPrefix(p, fullPrefix)
 	if !strings.HasPrefix(p, "/") {
 		p = "/" + p
 	}

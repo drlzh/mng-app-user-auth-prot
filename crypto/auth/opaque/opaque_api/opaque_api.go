@@ -11,39 +11,39 @@ import (
 	"github.com/drlzh/mng-app-user-auth-prot/user_auth_global_config"
 )
 
-// DefaultOpaqueService implements the OPAQUE authentication flow.
 type DefaultOpaqueService struct {
 	store opaque_store.OpaqueClientStore
 }
 
-// NewDefaultOpaqueService creates a new OPAQUE service instance with the given store.
+func (svc *DefaultOpaqueService) Store() opaque_store.OpaqueClientStore {
+	return svc.store
+}
+
 func NewDefaultOpaqueService(s opaque_store.OpaqueClientStore) *DefaultOpaqueService {
 	return &DefaultOpaqueService{store: s}
 }
 
 func (svc *DefaultOpaqueService) getServer() *opaque.Server {
 	conf := opaque.DefaultConfiguration()
-
 	server, err := conf.Server()
 	if err != nil {
 		log.Fatalln("OPAQUE server instantiation failed:", err)
 	}
-
-	err = server.SetKeyMaterial(
+	if err := server.SetKeyMaterial(
 		user_auth_global_config.OpaqueServerId(),
 		user_auth_global_config.OpaqueServerPrivateKey(),
 		user_auth_global_config.OpaqueServerPublicKey(),
 		user_auth_global_config.OpaqueServerSecretOprfSeed(),
-	)
-	if err != nil {
+	); err != nil {
 		log.Fatalln("OPAQUE server key material error:", err)
 	}
-
 	return server
 }
 
+// ─── Registration ─────────────────────────────────────────────────────────────
+
 func (svc *DefaultOpaqueService) RegistrationStep1(
-	user user_auth_global_config.UniqueUser, registrationRequestB64 string,
+	user user_auth_global_config.CoreUser, registrationRequestB64 string,
 ) (string, error) {
 	reqBytes, err := base64.RawURLEncoding.DecodeString(registrationRequestB64)
 	if err != nil {
@@ -51,7 +51,6 @@ func (svc *DefaultOpaqueService) RegistrationStep1(
 	}
 
 	server := svc.getServer()
-
 	request, err := server.Deserialize.RegistrationRequest(reqBytes)
 	if err != nil {
 		return "", fmt.Errorf("deserialization failed: %w", err)
@@ -65,7 +64,7 @@ func (svc *DefaultOpaqueService) RegistrationStep1(
 	response := server.RegistrationResponse(
 		request,
 		pubKey,
-		[]byte(user.String()),
+		[]byte(user.EncodeKey()),
 		user_auth_global_config.OpaqueServerSecretOprfSeed(),
 	)
 
@@ -73,7 +72,7 @@ func (svc *DefaultOpaqueService) RegistrationStep1(
 }
 
 func (svc *DefaultOpaqueService) RegistrationStep2(
-	user user_auth_global_config.UniqueUser, registrationRecordB64 string,
+	user user_auth_global_config.CoreUser, registrationRecordB64 string,
 ) error {
 	exists, err := svc.store.Exists(user)
 	if err != nil {
@@ -85,42 +84,72 @@ func (svc *DefaultOpaqueService) RegistrationStep2(
 	return svc.saveRecord(user, registrationRecordB64)
 }
 
-func (svc *DefaultOpaqueService) PasswordResetStep1(
-	user user_auth_global_config.UniqueUser, registrationRequestB64 string,
-) (string, error) {
-	return svc.RegistrationStep1(user, registrationRequestB64)
+func (svc *DefaultOpaqueService) saveRecord(
+	user user_auth_global_config.CoreUser, registrationRecordB64 string,
+) error {
+	recordBytes, err := base64.RawURLEncoding.DecodeString(registrationRecordB64)
+	if err != nil {
+		return fmt.Errorf("base64 decode error: %w", err)
+	}
+
+	server := svc.getServer()
+	record, err := server.Deserialize.RegistrationRecord(recordBytes)
+	if err != nil {
+		return fmt.Errorf("record deserialization error: %w", err)
+	}
+
+	clientRecord := &opaque.ClientRecord{
+		CredentialIdentifier: []byte(user.EncodeKey()),
+		ClientIdentity:       []byte(user.EncodeKey()),
+		RegistrationRecord:   record,
+	}
+
+	opaqueBytes := clientRecord.RegistrationRecord.Serialize()
+
+	// Create and persist the full user record
+	newRecord := &user_auth_global_config.OpaqueUserRecord{
+		OpaqueRecord: opaqueBytes,
+		UserGroups:   []user_auth_global_config.UserGroupBinding{}, // populated separately
+	}
+
+	data, err := user_auth_global_config.SerializeOpaqueUserRecord(newRecord)
+	if err != nil {
+		return fmt.Errorf("serialize opaque record: %w", err)
+	}
+
+	return svc.store.SaveRaw(user, data)
 }
 
-func (svc *DefaultOpaqueService) PasswordResetStep2(
-	user user_auth_global_config.UniqueUser, registrationRecordB64 string,
-) error {
-	return svc.saveRecord(user, registrationRecordB64)
-}
+// ─── Login ─────────────────────────────────────────────────────────────
 
 func (svc *DefaultOpaqueService) LoginStep1(
-	user user_auth_global_config.UniqueUser, startLoginRequestB64 string,
+	user user_auth_global_config.CoreUser, startLoginRequestB64 string,
 ) (string, string, error) {
 	startBytes, err := base64.RawURLEncoding.DecodeString(startLoginRequestB64)
 	if err != nil {
 		return "", "", fmt.Errorf("decode KE1: %w", err)
 	}
 
-	server := svc.getServer()
-
-	recordBytes, err := svc.store.Load(user)
+	data, err := svc.store.LoadRaw(user)
 	if err != nil {
 		return "", "", fmt.Errorf("load user record: %w", err)
 	}
 
-	record, err := server.Deserialize.RegistrationRecord(recordBytes)
+	rec, err := user_auth_global_config.DeserializeOpaqueUserRecord(data)
 	if err != nil {
-		return "", "", fmt.Errorf("record deserialization failed: %w", err)
+		return "", "", fmt.Errorf("record deserialize: %w", err)
+	}
+
+	server := svc.getServer()
+	opaqueRecord, err := server.Deserialize.RegistrationRecord(rec.OpaqueRecord)
+	if err != nil {
+		return "", "", fmt.Errorf("registration record parse: %w", err)
 	}
 
 	clientRecord := &opaque.ClientRecord{
-		CredentialIdentifier: []byte(user.String()),
-		ClientIdentity:       []byte(user.String()),
-		RegistrationRecord:   record,
+		CredentialIdentifier: []byte(user.EncodeKey()),
+		ClientIdentity:       []byte(user.EncodeKey()),
+		RegistrationRecord:   opaqueRecord,
 	}
 
 	ke1, err := server.Deserialize.KE1(startBytes)
@@ -169,25 +198,16 @@ func (svc *DefaultOpaqueService) LoginStep2(
 	return base64.RawURLEncoding.EncodeToString(sessionKey), nil
 }
 
-func (svc *DefaultOpaqueService) saveRecord(
-	user user_auth_global_config.UniqueUser, registrationRecordB64 string,
+// ─── Password Reset ─────────────────────────────────────────────────────────────
+
+func (svc *DefaultOpaqueService) PasswordResetStep1(
+	user user_auth_global_config.CoreUser, registrationRequestB64 string,
+) (string, error) {
+	return svc.RegistrationStep1(user, registrationRequestB64)
+}
+
+func (svc *DefaultOpaqueService) PasswordResetStep2(
+	user user_auth_global_config.CoreUser, registrationRecordB64 string,
 ) error {
-	recordBytes, err := base64.RawURLEncoding.DecodeString(registrationRecordB64)
-	if err != nil {
-		return fmt.Errorf("base64 decode error: %w", err)
-	}
-
-	server := svc.getServer()
-	record, err := server.Deserialize.RegistrationRecord(recordBytes)
-	if err != nil {
-		return fmt.Errorf("record deserialization error: %w", err)
-	}
-
-	clientRecord := &opaque.ClientRecord{
-		CredentialIdentifier: []byte(user.String()),
-		ClientIdentity:       []byte(user.String()),
-		RegistrationRecord:   record,
-	}
-
-	return svc.store.Save(user, clientRecord.RegistrationRecord.Serialize())
+	return svc.saveRecord(user, registrationRecordB64)
 }

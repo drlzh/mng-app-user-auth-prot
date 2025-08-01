@@ -31,7 +31,7 @@ type ServerOpaqueInitStepTwoPayload struct {
 
 type ClientOpaqueInitStepThreePayload struct {
 	UnixTimestamp int64  `json:"unix_timestamp"`
-	PoWSolution   string `json:"pow_challenge"`
+	PoWSolution   string `json:"pow_solution"`
 }
 
 type ServerOpaqueInitStepFourPayload struct {

@@ -21,40 +21,53 @@ func NewGhettoAdapter(db *ghetto_db.GhettoDB) *GhettoAdapter {
 	}
 }
 
-func (a *GhettoAdapter) Save(user user_auth_global_config.UniqueUser, record []byte) error {
-	return a.db.Upsert(a.tableName, user.String(), record)
+// SaveRaw stores the OpaqueUserRecord JSON blob under CoreUser key.
+func (a *GhettoAdapter) SaveRaw(user user_auth_global_config.CoreUser, data []byte) error {
+	return a.db.Upsert(a.tableName, user.EncodeKey(), data)
 }
 
-func (a *GhettoAdapter) Load(user user_auth_global_config.UniqueUser) ([]byte, error) {
-	return a.db.Get(a.tableName, user.String())
+// LoadRaw retrieves the full serialized OpaqueUserRecord.
+func (a *GhettoAdapter) LoadRaw(user user_auth_global_config.CoreUser) ([]byte, error) {
+	return a.db.Get(a.tableName, user.EncodeKey())
 }
 
-func (a *GhettoAdapter) Exists(user user_auth_global_config.UniqueUser) (bool, error) {
-	return a.db.Exists(a.tableName, user.String())
+// Exists checks whether a CoreUser has a stored record.
+func (a *GhettoAdapter) Exists(user user_auth_global_config.CoreUser) (bool, error) {
+	return a.db.Exists(a.tableName, user.EncodeKey())
 }
 
-func (a *GhettoAdapter) FindAllIdentitiesForUserID(
-	tenantID string,
-	userID string,
-) ([]user_auth_global_config.UniqueUser, error) {
-	keys, err := a.db.ListKeys(a.tableName)
+// Delete removes the full record for a CoreUser.
+func (a *GhettoAdapter) Delete(user user_auth_global_config.CoreUser) error {
+	return a.db.Delete(a.tableName, user.EncodeKey())
+}
+
+// GetUserGroupsForUser loads and extracts role bindings.
+func (a *GhettoAdapter) GetUserGroupsForUser(user user_auth_global_config.CoreUser) ([]user_auth_global_config.UserGroupBinding, error) {
+	raw, err := a.LoadRaw(user)
 	if err != nil {
-		return nil, fmt.Errorf("list keys error: %w", err)
+		return nil, fmt.Errorf("load user record: %w", err)
 	}
-
-	var matches []user_auth_global_config.UniqueUser
-	for _, k := range keys {
-		u, err := user_auth_global_config.UniqueUserFromString(k)
-		if err != nil {
-			continue // skip malformed
-		}
-		if u.TenantID == tenantID && u.UserID == userID {
-			matches = append(matches, u)
-		}
+	rec, err := user_auth_global_config.DeserializeOpaqueUserRecord(raw)
+	if err != nil {
+		return nil, fmt.Errorf("deserialize user record: %w", err)
 	}
-	return matches, nil
+	return rec.UserGroups, nil
 }
 
-func (a *GhettoAdapter) Delete(user user_auth_global_config.UniqueUser) error {
-	return a.db.Delete(a.tableName, user.String())
+// UpdateRoles replaces the role list (deduped) for the given CoreUser.
+func (a *GhettoAdapter) UpdateRoles(user user_auth_global_config.CoreUser, roles []user_auth_global_config.UserGroupBinding) error {
+	raw, err := a.LoadRaw(user)
+	if err != nil {
+		return fmt.Errorf("load record for role update: %w", err)
+	}
+	rec, err := user_auth_global_config.DeserializeOpaqueUserRecord(raw)
+	if err != nil {
+		return fmt.Errorf("deserialize for role update: %w", err)
+	}
+	rec.UserGroups = user_auth_global_config.DeduplicateRoles(roles)
+	newBytes, err := user_auth_global_config.SerializeOpaqueUserRecord(rec)
+	if err != nil {
+		return fmt.Errorf("serialize updated record: %w", err)
+	}
+	return a.SaveRaw(user, newBytes)
 }

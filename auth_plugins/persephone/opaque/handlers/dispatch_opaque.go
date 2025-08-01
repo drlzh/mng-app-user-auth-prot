@@ -23,7 +23,7 @@ func DispatchOpaque(
 	}
 
 	switch msg.CommandType {
-	case op.OpaqueCmdLoginStepOne, op.OpaqueCmdLoginStepTwo, op.OpaqueCmdLoginWithStub:
+	case op.OpaqueCmdLoginStepOne, op.OpaqueCmdLoginStepTwo:
 		return HandleLogin(svc, msg)
 
 	case op.OpaqueCmdRegisterStepOne, op.OpaqueCmdRegisterStepTwo:

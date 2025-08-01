@@ -2,13 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"time"
+
 	op "github.com/drlzh/mng-app-user-auth-prot/auth_plugins/persephone/opaque/structs"
 	"github.com/drlzh/mng-app-user-auth-prot/crypto/auth/opaque/opaque_api"
-	prg "github.com/drlzh/mng-app-user-auth-prot/password_reset_gate"
-	ti "github.com/drlzh/mng-app-user-auth-prot/token_issuer"
 )
 
-// HandlePasswordReset dispatches OPAQUE password reset steps.
 func HandlePasswordReset(
 	svc *opaque_api.DefaultOpaqueService,
 	req op.OpaqueClientReply,
@@ -35,15 +34,7 @@ func handleResetStep1(
 	req op.OpaqueClientReply,
 	payload op.ClientLoginPayload,
 ) (any, string, string, string) {
-	allowed, err := prg.AllowPasswordReset(payload.Username)
-	if err != nil {
-		return nil, "500", "Reset policy check failed", err.Error()
-	}
-	if !allowed {
-		return nil, "403", "Password reset denied", "Policy disallows reset for this user"
-	}
-
-	respB64, err := svc.PasswordResetStep1(payload.Username, req.OpaqueClientResponse)
+	respB64, err := svc.PasswordResetStep1(payload.User, req.OpaqueClientResponse)
 	if err != nil {
 		return nil, "400", "Password reset Step 1 failed", err.Error()
 	}
@@ -54,14 +45,27 @@ func handleResetStep1(
 	}, "200", "OK", ""
 }
 
-func handleResetStep2(svc *opaque_api.DefaultOpaqueService, req op.OpaqueClientReply, payload op.ClientLoginPayload) (any, string, string, string) {
-	err := svc.PasswordResetStep2(payload.Username, req.OpaqueClientResponse)
-	if err != nil {
+func handleResetStep2(
+	svc *opaque_api.DefaultOpaqueService,
+	req op.OpaqueClientReply,
+	payload op.ClientLoginPayload,
+) (any, string, string, string) {
+	if err := svc.PasswordResetStep2(payload.User, req.OpaqueClientResponse); err != nil {
 		return nil, "400", "Password reset Step 2 failed", err.Error()
 	}
 
+	ack := op.ServerOpaqueRegistrationSuccessAcknowledgementPayload{
+		UnixTimestamp: time.Now().Unix(),
+		Status:        "password_reset_complete",
+	}
+
+	payloadBytes, err := json.Marshal(ack)
+	if err != nil {
+		return nil, "500", "Failed to encode ack payload", err.Error()
+	}
+
 	return op.OpaqueServerReply{
-		CommandType:          op.OpaqueCmdPasswordResetStepTwo,
-		OpaqueServerResponse: "Password reset complete",
+		CommandType:   op.OpaqueCmdPasswordResetStepTwo,
+		ServerPayload: string(payloadBytes),
 	}, "200", "OK", ""
 }

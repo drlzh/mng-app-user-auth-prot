@@ -62,7 +62,7 @@ func (h *PersephoneHandler) Init(ctx *context.AppContext) error {
 
 func (h *PersephoneHandler) Routes() []string {
 	// Outer API routes for auth subsystem registry
-	return []string{"/login", "/register", "/password-reset"}
+	return []string{"/psp", "/login", "/register", "/password-reset"}
 }
 
 func (h *PersephoneHandler) HandleRequest(path string, payloadIn string, statusIn, infoIn, extendedIn string) (payloadOut any, statusOut, infoOut, extendedOut string) {

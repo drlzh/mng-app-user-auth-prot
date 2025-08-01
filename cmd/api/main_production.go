@@ -57,7 +57,7 @@ func connectToPostgres() *sql.DB {
 	return db
 }
 
-func main_production() {
+func main() {
 	var db *sql.DB = nil // In production, replace with db := connectToPostgres()
 	// This will make Persephone default to in-memory GhettoDB for easier local testing
 	// See <ProjectRoot>\auth_plugins\persephone\persephone.go: Init()

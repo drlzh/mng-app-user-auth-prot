@@ -15,5 +15,6 @@ type ServerOpaqueRegistrationSuccessAcknowledgementPayload struct {
 }
 
 type ClientRegistrationPayload struct {
-	User uagc.UniqueUser `json:"user"`
+	User      uagc.CoreUser           `json:"user"`
+	NewGroups []uagc.UserGroupBinding `json:"new_groups,omitempty"` // optional
 }
