@@ -21,7 +21,7 @@ func StartAuthServer() {
 		// AllowedOrigins must list the origin(s) you trust.
 		// Use []string{"*"} only for local dev.
 		// Change to real domain name
-		AllowedOrigins: []string{"http://localhost:8081"},
+		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		// ExposeHeaders is optional – it tells the browser which headers
