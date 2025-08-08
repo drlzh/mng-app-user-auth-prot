@@ -24,9 +24,9 @@ func (DefaultTransportWrapper) Unwrap(raw []byte) (string, string, string, strin
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		return "", "", "", "", fmt.Errorf("invalid transport message: %w", err)
 	}
-	if msg.Payload == "" {
-		return "", "", "", "", fmt.Errorf("missing payload")
-	}
+	//if msg.Payload == "" {
+	//	return "", "", "", "", fmt.Errorf("missing payload")
+	//}
 	return msg.Payload, msg.Status, msg.StatusInfo, msg.StatusExtendedInfo, nil
 }
 

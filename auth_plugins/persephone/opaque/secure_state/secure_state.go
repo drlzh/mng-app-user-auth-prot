@@ -111,8 +111,8 @@ func VerifyAndDecryptEnvelope(env op.OpaqueServerStateEnvelope) (string, error) 
 	if err != nil || len(sigKeyBytes) != ed448_api.SignatureSize {
 		return "", errors.New("invalid signature on symmetric key")
 	}
-	var sigKey ed448_api.Signature
-	copy(sigKey[:], sigKeyBytes)
+
+	sigKey := ed448_api.Signature(sigKeyBytes)
 
 	symmetricKey, err := rsa_api.Decrypt(user_auth_global_config.RsaOpaqueEnvelopePrivateKey(), encKey, nil)
 	if err != nil {
@@ -146,8 +146,8 @@ func VerifyAndDecryptEnvelope(env op.OpaqueServerStateEnvelope) (string, error) 
 	if err != nil || len(sigBytes) != ed448_api.SignatureSize {
 		return "", errors.New("invalid base64 or length of state signature")
 	}
-	var sig ed448_api.Signature
-	copy(sig[:], sigBytes)
+	
+	sig := ed448_api.Signature(sigBytes)
 
 	// Remove signature before verification
 	stateCopy := state

@@ -108,7 +108,12 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 		// XChaCha uses the ChaCha core to mix 16 bytes of the nonce into a
 		// derived key, allowing it to operate on a nonce of 24 bytes.
 		// See draft-irtf-cfrg-xchacha-01, Section 2.3.
-		key, _ = HChaCha(key, nonce[0:16])
+		dk := make([]byte, 32)
+		if err := hChaChaCore(dk, key, nonce[0:16], c.roundCount); err != nil {
+			return nil, err
+		}
+		key = dk
+
 		cNonce := make([]byte, NonceSize)
 		copy(cNonce[4:12], nonce[16:24])
 		nonce = cNonce
@@ -406,20 +411,29 @@ func (s *Cipher) CipherPosition() uint64 {
 // key and a 16 bytes nonce. It returns an error if key or nonce have any other
 // length. It is used as part of the XChaCha20 construction.
 func HChaCha(key, nonce []byte) ([]byte, error) {
-	// This function is split into a wrapper so that the slice allocation will
-	// be inlined, and depending on how the caller uses the return value, won't
-	// escape to the heap.
-	out := make([]byte, 32)
-	return hChaCha(out, key, nonce)
+	return HChaChaWithRounds(key, nonce, 20)
 }
 
-func hChaCha(out, key, nonce []byte) ([]byte, error) {
+// Public API: custom round count.
+func HChaChaWithRounds(key, nonce []byte, rounds int) ([]byte, error) {
+	out := make([]byte, 32)
+	if err := hChaChaCore(out, key, nonce, rounds); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func hChaChaCore(out, key, nonce []byte, rounds int) error {
 	if len(key) != KeySize {
-		return nil, errors.New("chacha: wrong HChaCha key size")
+		return errors.New("chacha: wrong HChaCha key size")
 	}
 	if len(nonce) != 16 {
-		return nil, errors.New("chacha: wrong HChaCha nonce size")
+		return errors.New("chacha: wrong HChaCha nonce size")
 	}
+	if rounds%2 != 0 || rounds < 2 {
+		return errors.New("chacha: round count must be an even number ≥ 2")
+	}
+	_ = out[31] // BCE hint, also ensures len(out) >= 32
 
 	x0, x1, x2, x3 := j0, j1, j2, j3
 	x4 := binary.LittleEndian.Uint32(key[0:4])
@@ -435,21 +449,21 @@ func hChaCha(out, key, nonce []byte) ([]byte, error) {
 	x14 := binary.LittleEndian.Uint32(nonce[8:12])
 	x15 := binary.LittleEndian.Uint32(nonce[12:16])
 
-	for i := 0; i < 10; i++ {
-		// Diagonal round.
+	iters := rounds / 2
+	for i := 0; i < iters; i++ {
+		// Column round.
 		x0, x4, x8, x12 = quarterRound(x0, x4, x8, x12)
 		x1, x5, x9, x13 = quarterRound(x1, x5, x9, x13)
 		x2, x6, x10, x14 = quarterRound(x2, x6, x10, x14)
 		x3, x7, x11, x15 = quarterRound(x3, x7, x11, x15)
 
-		// Column round.
+		// Diagonal round.
 		x0, x5, x10, x15 = quarterRound(x0, x5, x10, x15)
 		x1, x6, x11, x12 = quarterRound(x1, x6, x11, x12)
 		x2, x7, x8, x13 = quarterRound(x2, x7, x8, x13)
 		x3, x4, x9, x14 = quarterRound(x3, x4, x9, x14)
 	}
 
-	_ = out[31] // bounds check elimination hint
 	binary.LittleEndian.PutUint32(out[0:4], x0)
 	binary.LittleEndian.PutUint32(out[4:8], x1)
 	binary.LittleEndian.PutUint32(out[8:12], x2)
@@ -458,5 +472,5 @@ func hChaCha(out, key, nonce []byte) ([]byte, error) {
 	binary.LittleEndian.PutUint32(out[20:24], x13)
 	binary.LittleEndian.PutUint32(out[24:28], x14)
 	binary.LittleEndian.PutUint32(out[28:32], x15)
-	return out, nil
+	return nil
 }

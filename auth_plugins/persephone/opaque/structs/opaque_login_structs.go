@@ -31,7 +31,7 @@ type EnvelopeKeyBlock struct {
 	Version                                string `json:"version"`
 	EncryptedEphemeralSymmetricEnvelopeKey string `json:"encrypted_ephemeral_symmetric_master_key"`
 	SignatureKeyID                         string `json:"signature_key_id"`
-	EphemeralSymmetricEnvelopeKeySignature string `json:"encrypted_ephemeral_symmetric_envelope_key_signature"`
+	EphemeralSymmetricEnvelopeKeySignature string `json:"ephemeral_symmetric_envelope_key_signature"`
 }
 
 type OpaqueServerState struct {

@@ -6,10 +6,10 @@ toolchain go1.24.4
 
 require (
 	github.com/biscuit-auth/biscuit-go/v2 v2.2.0
-	github.com/btcsuite/btcd/btcec/v2 v2.3.5
 	github.com/bytemare/opaque v0.10.0
 	github.com/cloudflare/circl v1.6.1
 	github.com/lib/pq v1.10.9
+	github.com/rs/cors v1.11.1
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/crypto v0.40.0
 )
@@ -23,7 +23,6 @@ require (
 	github.com/bytemare/hash2curve v0.1.3 // indirect
 	github.com/bytemare/ksf v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/gtank/ristretto255 v0.1.2 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

@@ -11,7 +11,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		PoWSubject:    "OPAQUE_INIT",
-		PoWDifficulty: 20,
+		PoWDifficulty: 10,
 		PoWTTL:        5 * time.Minute,
 	}
 }

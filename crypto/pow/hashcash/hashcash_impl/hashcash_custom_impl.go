@@ -148,8 +148,7 @@ func (h *Hashcash) Verify(expectedSubject string) error {
 	if err != nil || len(sigBytes) != ed448_api.SignatureSize {
 		return ErrSignatureMalformed
 	}
-	var sig ed448_api.Signature
-	copy(sig[:], sigBytes)
+	sig := ed448_api.Signature(sigBytes)
 
 	if !ed448_api.Verify(sig, []byte(h.unsignedHeader()), user_auth_global_config.Ed448HashcashPublicKey()) {
 		return ErrSignatureInvalid
@@ -202,18 +201,16 @@ func Parse(s string) (*Hashcash, error) {
 // leadingZeroBits checks that the hash has the required number of leading 0 bits.
 func leadingZeroBits(hash []byte, bits int) bool {
 	full := bits / 8
-	remain := bits % 8
+	rem := bits % 8
 
 	for i := 0; i < full; i++ {
-		if hash[i] != 0x00 {
+		if hash[i] != 0 {
 			return false
 		}
 	}
-	if remain > 0 {
-		mask := byte(0xFF >> remain)
-		if hash[full]&mask != 0x00 {
-			return false
-		}
+	if rem == 0 {
+		return true
 	}
-	return true
+	// top rem bits of next byte must be zero
+	return (hash[full] >> (8 - rem)) == 0
 }

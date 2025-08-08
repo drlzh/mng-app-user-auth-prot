@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/bytemare/opaque"
 	"github.com/drlzh/mng-app-user-auth-prot/crypto/auth/ed448/ed448_api"
+	"github.com/drlzh/mng-app-user-auth-prot/crypto/encryption/chacha/chacha_api"
+	"github.com/drlzh/mng-app-user-auth-prot/crypto/encryption/chacha_poly1305/chacha_poly1305_api"
 	"github.com/drlzh/mng-app-user-auth-prot/crypto/encryption/rsa/rsa_api"
 	"log"
 )
@@ -96,8 +98,8 @@ func main() {
 	//hashcash_api.TestDriver()
 	//opaque_api.TestDriver()
 	//poly1305_api.TestDriver()
-	//chacha_api.TestDriver()
-	//chacha_poly1305_api.TestDriver()
+	chacha_api.TestDriver()
+	chacha_poly1305_api.TestDriver()
 	//rsa_api.TestDriver()
 	//ed448_api.TestDriver()
 	//ghetto_db.TestDriver()

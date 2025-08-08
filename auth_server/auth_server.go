@@ -3,6 +3,7 @@ package auth_server
 import (
 	"encoding/json"
 	"github.com/drlzh/mng-app-user-auth-prot/auth_service_registry"
+	"github.com/rs/cors"
 	"io"
 	"log"
 	"net/http"
@@ -15,6 +16,37 @@ const (
 )
 
 func StartAuthServer() {
+	// CORS configuration – edit for production!
+	c := cors.New(cors.Options{
+		// AllowedOrigins must list the origin(s) you trust.
+		// Use []string{"*"} only for local dev.
+		// Change to real domain name
+		AllowedOrigins: []string{"http://localhost:8081"},
+		AllowedMethods: []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
+		AllowedHeaders: []string{"Content-Type", "Authorization"},
+		// ExposeHeaders is optional – it tells the browser which headers
+		// from the response it may read (like a custom `X-…` header).
+		ExposedHeaders:   []string{"*"},
+		AllowCredentials: true, // use only if you need cookies / auth header
+		// Optionally enable logging in dev:
+		// Debug: true,
+	})
+
+	// All routes (including `/psp`) go under the CORS handler.
+	http.Handle("/", c.Handler(http.HandlerFunc(AuthEndpoint)))
+
+	// If you have other routes (health etc.) register them BEFORE
+	// the CORS wrapper, or add another `http.Handler` chain
+	// that includes the CORS middleware for those routes as well.
+
+	log.Printf("🚀 Auth server running on %s", defaultPort)
+	if err := http.ListenAndServe(defaultPort, nil); err != nil {
+		log.Fatalf("❌ Auth server failed: %v", err)
+	}
+}
+
+/*
+func StartAuthServer() {
 	http.HandleFunc(fullPrefix, AuthEndpoint)
 
 	log.Printf("🚀 Auth server running on %s", defaultPort)
@@ -22,6 +54,7 @@ func StartAuthServer() {
 		log.Fatalf("❌ Auth server failed: %v", err)
 	}
 }
+*/
 
 func AuthEndpoint(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

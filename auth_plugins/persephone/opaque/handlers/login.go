@@ -54,8 +54,8 @@ func HandleLogin(
 
 		reply := op.OpaqueServerReply{
 			CommandType:          op.OpaqueCmdLoginStepTwo,
-			OpaqueServerResponse: sessionAuth,
-			ServerPayload:        "",
+			OpaqueServerResponse: "",
+			ServerPayload:        sessionAuth,
 		}
 		return reply, "200", "Login successful", ""
 

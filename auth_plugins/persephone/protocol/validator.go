@@ -22,7 +22,7 @@ func SignTraceID(traceID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(sig[:]), nil
+	return base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
 func VerifyTraceID(traceID, signature string) error {
@@ -32,8 +32,7 @@ func VerifyTraceID(traceID, signature string) error {
 		return errors.New("invalid base64 or signature size")
 	}
 
-	var sig ed448_api.Signature
-	copy(sig[:], sigBytes)
+	sig := ed448_api.Signature(sigBytes)
 
 	if !ed448_api.Verify(sig, []byte(traceID), pub) {
 		return errors.New("signature verification failed")

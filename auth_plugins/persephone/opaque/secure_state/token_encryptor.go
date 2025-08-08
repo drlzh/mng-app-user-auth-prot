@@ -1,35 +1,26 @@
 package secure_state
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/sha512"
 	"encoding/base64"
-	"errors"
+	"fmt"
+	"github.com/drlzh/mng-app-user-auth-prot/crypto/encryption/chacha/chacha_api"
 )
 
 // EncryptTokenWithSessionKey encrypts a token using AES-256-CBC,
 // where the key and IV are derived from a SHA-2-512 hash of the session key.
 // The output is base64-URL-encoded ciphertext.
 func EncryptTokenWithSessionKey(sessionKey []byte, token string) (string, error) {
+	fmt.Println(base64.RawURLEncoding.EncodeToString(sessionKey))
 	hash := sha512.Sum512(sessionKey)
 	key := hash[:32]
-	iv := hash[:16]
+	iv := hash[32 : 32+24]
+	plaintext := []byte(token)
 
-	block, err := aes.NewCipher(key)
+	ciphertext, err := chacha_api.Encrypt(key, iv, plaintext)
 	if err != nil {
 		return "", err
 	}
-	if len(iv) != aes.BlockSize {
-		return "", errors.New("invalid IV length for AES block size")
-	}
-
-	plaintext := []byte(token)
-	padded := pkcs7Pad(plaintext, aes.BlockSize)
-
-	ciphertext := make([]byte, len(padded))
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(ciphertext, padded)
 
 	return base64.RawURLEncoding.EncodeToString(ciphertext), nil
 }

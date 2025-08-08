@@ -8,13 +8,13 @@ import (
 // Encrypt encrypts the plaintext using D-CC100 or D-XCC100 (based on nonce length).
 // Returns ciphertext of equal length.
 func Encrypt(key, nonce, plaintext []byte) ([]byte, error) {
-	return EncryptWithRounds(key, nonce, plaintext, 20)
+	return EncryptWithRounds(key, nonce, plaintext, 100)
 }
 
 // Decrypt decrypts the ciphertext using ChaCha or XChaCha (based on nonce length).
 // Returns plaintext of equal length.
 func Decrypt(key, nonce, ciphertext []byte) ([]byte, error) {
-	return DecryptWithRounds(key, nonce, ciphertext, 20)
+	return DecryptWithRounds(key, nonce, ciphertext, 100)
 }
 
 // EncryptWithRounds allows custom round count.
